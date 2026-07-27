@@ -64,6 +64,22 @@ describe('createMicMonitor', () => {
     expect(get(monitor.state).status).toBe('idle')
   })
 
+  it('requests the mic stream with AGC/echo cancellation/noise suppression disabled', async () => {
+    const monitor = createMicMonitor({
+      getUserMedia,
+      createAudioContext: () => fakeContext as unknown as AudioContext,
+    })
+    await monitor.start()
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: false,
+        echoCancellation: false,
+        noiseSuppression: false,
+      },
+    })
+  })
+
   it('transitions to running and reports readings after start', async () => {
     const monitor = createMicMonitor({
       getUserMedia,

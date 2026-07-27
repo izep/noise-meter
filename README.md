@@ -62,10 +62,31 @@ injected/mocked in tests so the logic can run without real hardware.
 ## dB calibration
 
 The Web Audio API only gives relative signal level (dBFS), not real-world dB SPL. This app
-converts dBFS to an _approximate_ dB SPL reading using a calibration offset (Settings panel).
-For a reasonably accurate reading on your specific tablet/microphone, compare the displayed
-value against a reference sound level meter (or phone SPL app) at a known volume and adjust the
-offset until they match.
+converts dBFS to an _approximate_ dB SPL reading using a calibration offset (`displayed dB =
+raw signal level + offset`), configurable in the Settings panel (default `100`, a reasonable
+starting point for most tablet microphones).
+
+**How to pick a value:**
+
+1. Get a reference reading: install a sound level meter app on your phone (e.g. "Decibel X",
+   "Sound Meter", or the free NIOSH SLM app on iOS/Android), or use a dedicated SPL meter if you
+   have one.
+2. Put your phone (running the reference app) right next to the tablet, and start monitoring in
+   this app.
+3. Play a steady sound at a normal-to-loud volume near both devices (talking, music, a fan,
+   etc. — avoid very quiet or clipping-loud sounds for the best fit).
+4. Compare the two readings. If this app reads **lower** than the reference, **increase** the
+   calibration offset by the difference; if it reads **higher**, **decrease** it. Adjusting the
+   offset shifts the displayed value by exactly that many dB.
+5. Re-check at a couple of different volumes if you can — a single offset won't be perfectly
+   accurate across the whole range (real microphones aren't perfectly linear), but it gets you
+   close enough to reliably catch "too loud" moments around your chosen threshold.
+
+You only need to do this once per device/tablet. The app disables the browser's automatic gain
+control, echo cancellation, and noise suppression on the microphone stream specifically so the
+raw signal level stays consistent over time — with auto gain control left on, the browser would
+continuously re-normalize the signal and any calibration you set would drift and become
+unreliable.
 
 ## Movement detection
 

@@ -130,6 +130,11 @@
       onblur={() => (calibrationText = String(current.calibrationOffsetDb))}
     />
   </label>
+  <p class="hint">
+    This app measures relative signal level, not true dB SPL, so it needs a one-time offset to match
+    a real meter. Using a phone SPL meter app (or dedicated sound level meter) next to this tablet,
+    play a steady sound, then raise or lower this number until the readings roughly match.
+  </p>
 
   <button type="button" onclick={handleReset}>Reset to defaults</button>
 
@@ -183,6 +188,13 @@
     gap: 0.75rem;
     font-size: 0.9rem;
     color: #e2e8f0;
+  }
+
+  .hint {
+    margin: -0.25rem 0 0;
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.35;
   }
 
   input {

@@ -64,7 +64,18 @@ export function createMicMonitor(options: MicMonitorOptions = {}): MicMonitor {
     stop()
     update((s) => ({ ...s, status: 'starting', error: undefined }))
     try {
-      stream = await getUserMedia({ audio: true })
+      // Disable browser-side audio processing that would otherwise distort
+      // level readings: auto gain control continuously re-normalizes mic
+      // sensitivity based on ambient conditions, which would make any fixed
+      // calibration offset drift over time. Echo cancellation / noise
+      // suppression can also attenuate legitimate loud sounds.
+      stream = await getUserMedia({
+        audio: {
+          autoGainControl: false,
+          echoCancellation: false,
+          noiseSuppression: false,
+        },
+      })
       audioContext = createAudioContext()
       analyser = audioContext.createAnalyser()
       analyser.fftSize = fftSize
