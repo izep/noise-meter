@@ -73,6 +73,26 @@ Movement is detected from sudden changes in accelerometer magnitude versus a slo
 baseline (to ignore normal ambient vibration). Sensitivity is configurable in Settings. This is
 expected to trigger rarely — only when the tablet is actually picked up, bumped, or relocated.
 
+### Fire tablet / Silk troubleshooting
+
+On some Amazon Fire tablets, Silk can silently block motion sensors at the browser/site-permission
+level even when the page itself loads normally. In that state, the app can still monitor the
+microphone, but `devicemotion` never delivers usable samples, so movement alerts will never fire.
+
+If you see the in-app “No motion data detected” warning:
+
+1. Open the site in Silk.
+2. Open **Silk Settings → Site Settings → Motion & Orientation Access**.
+3. Allow motion access for this site.
+4. Reload the page, then tap **Start Monitoring** again.
+
+Notes:
+
+- The iOS-only `DeviceMotionEvent.requestPermission()` prompt does **not** appear on Fire OS /
+  Android, so a browser-level block can otherwise fail silently.
+- This app does not need a custom `Permissions-Policy` header on GitHub Pages for normal top-level
+  use: MDN documents the default allowlist for both `accelerometer` and `gyroscope` as `self`.
+
 ## Deploying to GitHub Pages
 
 The `deploy.yml` workflow builds and deploys the `dist/` output to GitHub Pages automatically on

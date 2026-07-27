@@ -6,7 +6,11 @@
   import HistoryPanel from './components/HistoryPanel.svelte'
   import SettingsPanel from './components/SettingsPanel.svelte'
   import { createMicMonitor } from './lib/audio/micMonitor'
-  import { createMotionMonitor, type MovementEvent } from './lib/motion/motionMonitor'
+  import {
+    createMotionMonitor,
+    type MovementEvent,
+    type MotionMonitorStatus,
+  } from './lib/motion/motionMonitor'
   import { createWakeLockController } from './lib/wakelock/wakeLock'
   import { settings, loadSettings, DEFAULT_SETTINGS } from './lib/settings/settings'
   import {
@@ -50,6 +54,7 @@
 
   let dbSpl = $state(0)
   let micStatus = $state<'idle' | 'starting' | 'running' | 'error' | 'stopped'>('idle')
+  let motionStatus = $state<MotionMonitorStatus>('idle')
   micMonitor.state.subscribe((s) => {
     dbSpl = s.dbSpl
     micStatus = s.status
@@ -60,6 +65,9 @@
       )
       pendingSamples.push(sample)
     }
+  })
+  motionMonitor.state.subscribe((s) => {
+    motionStatus = s.status
   })
 
   function handleMovement(event: MovementEvent): void {
@@ -149,6 +157,13 @@
       </div>
     </header>
 
+    {#if motionStatus === 'no-signal'}
+      <p class="motion-warning" role="status">
+        No motion data detected. On Fire tablets, open Silk browser Settings → Site Settings →
+        Motion &amp; Orientation Access, allow it for this site, then reload the page.
+      </p>
+    {/if}
+
     <VolumeGraph data={liveSamples} thresholdDb={currentSettings.thresholdDb} />
 
     <div class="panels">
@@ -192,6 +207,16 @@
     font-size: 0.8rem;
     color: #64748b;
     font-weight: 400;
+  }
+
+  .motion-warning {
+    margin: 0;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #f59e0b;
+    border-radius: 0.75rem;
+    background: #1e293b;
+    color: #fcd34d;
+    font-size: 0.95rem;
   }
 
   .panels {

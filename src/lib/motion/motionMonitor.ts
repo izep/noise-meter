@@ -12,7 +12,8 @@ export interface MovementEvent {
   durationMs: number
 }
 
-export type MotionMonitorStatus = 'idle' | 'running' | 'unsupported' | 'denied' | 'stopped'
+export type MotionMonitorStatus =
+  'idle' | 'running' | 'unsupported' | 'denied' | 'no-signal' | 'stopped'
 
 export interface MotionMonitorState {
   status: MotionMonitorStatus
@@ -23,6 +24,8 @@ export interface MotionMonitorOptions {
   sensitivity?: number
   /** Consecutive time a spike must persist before it's confirmed as "moved", to avoid false positives. */
   debounceMs?: number
+  /** If no usable motion sample arrives after start(), surface a diagnostic instead of staying "running". */
+  noSignalTimeoutMs?: number
   onMovement?: (event: MovementEvent) => void
   /** Overridable for testing. Defaults to window.addEventListener/removeEventListener. */
   addEventListener?: (type: 'devicemotion', listener: (e: DeviceMotionEvent) => void) => void
@@ -50,6 +53,7 @@ function isPermissionGatedDeviceMotion(
 
 export function createMotionMonitor(options: MotionMonitorOptions = {}): MotionMonitor {
   const debounceMs = options.debounceMs ?? 300
+  const noSignalTimeoutMs = options.noSignalTimeoutMs ?? 6_000
   const now = options.now ?? (() => Date.now())
   const detector = new MovementSpikeDetector(options.sensitivity ?? 2.5)
 
@@ -75,10 +79,19 @@ export function createMotionMonitor(options: MotionMonitorOptions = {}): MotionM
 
   let spikeStartedAt: number | undefined
   let listener: ((e: DeviceMotionEvent) => void) | undefined
+  let noSignalTimer: ReturnType<typeof setTimeout> | undefined
+  let hasReceivedMotionSample = false
+
+  function clearNoSignalTimer(): void {
+    if (noSignalTimer !== undefined) clearTimeout(noSignalTimer)
+    noSignalTimer = undefined
+  }
 
   function handleEvent(e: DeviceMotionEvent): void {
     const accel = e.accelerationIncludingGravity ?? e.acceleration
     if (!accel || accel.x === null || accel.y === null || accel.z === null) return
+    hasReceivedMotionSample = true
+    clearNoSignalTimer()
     const vector: Vector3 = { x: accel.x, y: accel.y, z: accel.z }
     const isSpike = detector.update(magnitude(vector))
     const t = now()
@@ -110,14 +123,23 @@ export function createMotionMonitor(options: MotionMonitorOptions = {}): MotionM
     }
     detector.reset()
     spikeStartedAt = undefined
+    hasReceivedMotionSample = false
     listener = handleEvent
     addEventListener('devicemotion', listener)
     set({ status: 'running', moving: false })
+    clearNoSignalTimer()
+    noSignalTimer = setTimeout(() => {
+      if (!hasReceivedMotionSample) {
+        set({ status: 'no-signal', moving: false })
+      }
+    }, noSignalTimeoutMs)
   }
 
   function stop(): void {
     if (listener) removeEventListener('devicemotion', listener)
     listener = undefined
+    clearNoSignalTimer()
+    hasReceivedMotionSample = false
     set({ status: 'stopped', moving: false })
   }
 

@@ -32,6 +32,54 @@ describe('createMotionMonitor', () => {
     })
     await monitor.start()
     expect(get(monitor.state).status).toBe('running')
+    monitor.stop()
+  })
+
+  it('reports no-signal if no usable motion sample arrives after start()', async () => {
+    vi.useFakeTimers()
+    try {
+      const monitor = createMotionMonitor({
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        requestPermission: () => Promise.resolve('granted'),
+        noSignalTimeoutMs: 5_000,
+      })
+
+      await monitor.start()
+      expect(get(monitor.state).status).toBe('running')
+
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(get(monitor.state).status).toBe('no-signal')
+      monitor.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('clears the no-signal timer after the first usable motion sample arrives', async () => {
+    vi.useFakeTimers()
+    try {
+      let handler: ((e: DeviceMotionEvent) => void) | undefined
+      const monitor = createMotionMonitor({
+        addEventListener: (_type, listener) => {
+          handler = listener
+        },
+        removeEventListener: vi.fn(),
+        requestPermission: () => Promise.resolve('granted'),
+        noSignalTimeoutMs: 5_000,
+      })
+
+      await monitor.start()
+      await vi.advanceTimersByTimeAsync(4_000)
+      handler!(makeEvent(0, 0, 9.8))
+      expect(get(monitor.state).status).toBe('running')
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(get(monitor.state).status).toBe('running')
+      monitor.stop()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('fires onMovement and sets moving=true after a sustained spike (debounced)', async () => {
@@ -61,6 +109,7 @@ describe('createMotionMonitor', () => {
     expect(get(monitor.state).moving).toBe(true)
     expect(onMovement).toHaveBeenCalledTimes(1)
     expect(onMovement.mock.calls[0][0]).toMatchObject({ timestamp: 160 })
+    monitor.stop()
   })
 
   it('clears moving state once acceleration settles back down', async () => {
@@ -85,6 +134,7 @@ describe('createMotionMonitor', () => {
     t = 20
     handler!(makeEvent(0, 0, 9.8))
     expect(get(monitor.state).moving).toBe(false)
+    monitor.stop()
   })
 
   it('removes the listener on stop()', async () => {
