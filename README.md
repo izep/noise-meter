@@ -87,6 +87,18 @@ The History view shows:
 - a per-violation list with peak dB + duration, and
 - visual markers for each violation on the graph.
 
+## Clearing / resetting history
+
+Open the **Settings** panel and click **Clear history** at the bottom, then confirm. This
+permanently deletes all stored volume history, threshold violations, and movement events from
+IndexedDB (retention settings and other preferences are untouched — use **Reset to defaults**
+above it for that). The live graph and history view update immediately.
+
+If you'd rather wipe everything (including settings and the installed PWA cache) from the
+browser directly: open the site, then use your browser's "Site settings" / "Clear site data" for
+this origin (in Chrome-based browsers: address bar → site info icon → "Site settings" → "Clear
+data"; in Silk: Settings → Site Settings → find the site → "Clear data").
+
 ### Fire tablet / Silk troubleshooting
 
 On some Amazon Fire tablets, Silk can silently block motion sensors at the browser/site-permission

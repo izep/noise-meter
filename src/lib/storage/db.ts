@@ -91,3 +91,9 @@ export function getDb(): Promise<IDBPDatabase<NoiseMeterDB>> {
 export function resetDbConnection(): void {
   dbPromise = undefined
 }
+
+/** Clears all stored history (volume buckets, threshold violations, movement events). */
+export async function clearAllHistory(): Promise<void> {
+  const db = await getDb()
+  await Promise.all([db.clear(VOLUME_STORE), db.clear(VIOLATION_STORE), db.clear(MOVEMENT_STORE)])
+}

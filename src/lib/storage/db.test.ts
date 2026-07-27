@@ -7,6 +7,7 @@ import {
   MOVEMENT_STORE,
   VIOLATION_STORE,
   VOLUME_STORE,
+  clearAllHistory,
   getDb,
   resetDbConnection,
 } from './db'
@@ -157,5 +158,34 @@ describe('violation history storage (fake-indexeddb)', () => {
     expect(removed).toBe(1)
     const remaining = await getViolationHistorySince(0)
     expect(remaining).toHaveLength(1)
+  })
+})
+
+describe('clearAllHistory (fake-indexeddb)', () => {
+  beforeEach(() => {
+    resetDbConnection()
+    resetFakeIndexedDb()
+  })
+
+  it('empties all three history stores', async () => {
+    await saveBuckets([{ timestamp: 1000, minDb: 40, maxDb: 60, avgDb: 50 }])
+    await saveMovementEvent({ timestamp: 1000, magnitude: 12, durationMs: 300 })
+    await saveViolationEvent({ timestamp: 1000, peakDb: 72, durationMs: 800 })
+
+    await clearAllHistory()
+
+    expect(await getHistorySince(0)).toHaveLength(0)
+    expect(await getMovementHistorySince(0)).toHaveLength(0)
+    expect(await getViolationHistorySince(0)).toHaveLength(0)
+  })
+
+  it('leaves the database usable for subsequent writes after clearing', async () => {
+    await saveBuckets([{ timestamp: 1000, minDb: 40, maxDb: 60, avgDb: 50 }])
+    await clearAllHistory()
+
+    await saveBuckets([{ timestamp: 5000, minDb: 45, maxDb: 65, avgDb: 55 }])
+    const remaining = await getHistorySince(0)
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].timestamp).toBe(5000)
   })
 })

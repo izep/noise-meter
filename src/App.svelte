@@ -107,6 +107,15 @@
     violationEvents = await getViolationHistorySince(cutoff)
   }
 
+  async function handleHistoryCleared(): Promise<void> {
+    // The persisted stores are already empty; also reset in-memory state so
+    // the UI (graph, history list, live reading trail) reflects the clear
+    // immediately instead of waiting for the next periodic refresh.
+    liveSamples = []
+    pendingSamples = []
+    await Promise.all([refreshVolumeHistory(), refreshMovementHistory(), refreshViolationHistory()])
+  }
+
   async function flushAggregatedSamples(): Promise<void> {
     if (pendingSamples.length === 0) return
     const toFlush = pendingSamples
@@ -217,7 +226,7 @@
         {movementEvents}
         thresholdDb={currentSettings.thresholdDb}
       />
-      <SettingsPanel />
+      <SettingsPanel onHistoryCleared={handleHistoryCleared} />
     </div>
   </main>
 {/if}
