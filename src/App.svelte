@@ -6,6 +6,7 @@
   import HistoryPanel from './components/HistoryPanel.svelte'
   import SettingsPanel from './components/SettingsPanel.svelte'
   import { createMicMonitor } from './lib/audio/micMonitor'
+  import { ThresholdViolationTracker } from './lib/audio/violationTracker'
   import {
     createMotionMonitor,
     type MovementEvent,
@@ -25,7 +26,16 @@
     getMovementHistorySince,
     pruneMovementOlderThan,
   } from './lib/storage/movementHistory'
-  import type { VolumeBucketRecord, MovementEventRecord } from './lib/storage/db'
+  import {
+    saveViolationEvent,
+    getViolationHistorySince,
+    pruneViolationOlderThan,
+  } from './lib/storage/violationHistory'
+  import type {
+    VolumeBucketRecord,
+    MovementEventRecord,
+    ViolationEventRecord,
+  } from './lib/storage/db'
 
   const LIVE_WINDOW_MS = 5 * 60 * 1000 // keep 5 minutes of raw samples for the live graph
   const AGGREGATE_INTERVAL_MS = 30_000 // flush aggregated buckets to IndexedDB every 30s
@@ -39,6 +49,7 @@
   // Read once for initial construction; live updates are pushed via the $effect below.
   const initialSettings = loadSettings()
   const micMonitor = createMicMonitor({ calibrationOffsetDb: initialSettings.calibrationOffsetDb })
+  const violationTracker = new ThresholdViolationTracker(initialSettings.thresholdDb)
   const motionMonitor = createMotionMonitor({
     sensitivity: initialSettings.movementSensitivity,
     onMovement: handleMovement,
@@ -48,6 +59,7 @@
   let liveSamples = $state<{ timestamp: number; db: number }[]>([])
   let pendingSamples: { timestamp: number; db: number }[] = []
   let volumeHistory = $state<VolumeBucketRecord[]>([])
+  let violationEvents = $state<ViolationEventRecord[]>([])
   let movementEvents = $state<MovementEventRecord[]>([])
   let movementAlertUntil = $state(0)
   let now = $state(Date.now())
@@ -64,6 +76,11 @@
         (s2) => s2.timestamp > Date.now() - LIVE_WINDOW_MS,
       )
       pendingSamples.push(sample)
+
+      const violationEvent = violationTracker.update(s.dbSpl, sample.timestamp)
+      if (violationEvent) {
+        void saveViolationEvent(violationEvent).then(refreshViolationHistory)
+      }
     }
   })
   motionMonitor.state.subscribe((s) => {
@@ -85,6 +102,11 @@
     movementEvents = await getMovementHistorySince(cutoff)
   }
 
+  async function refreshViolationHistory(): Promise<void> {
+    const cutoff = retentionCutoff(currentSettings.retentionHours)
+    violationEvents = await getViolationHistorySince(cutoff)
+  }
+
   async function flushAggregatedSamples(): Promise<void> {
     if (pendingSamples.length === 0) return
     const toFlush = pendingSamples
@@ -92,8 +114,9 @@
     const buckets = aggregateSamples(toFlush, BUCKET_MS)
     await saveBuckets(buckets)
     await pruneOlderThan(retentionCutoff(currentSettings.retentionHours))
+    await pruneViolationOlderThan(retentionCutoff(currentSettings.retentionHours))
     await pruneMovementOlderThan(retentionCutoff(currentSettings.retentionHours))
-    await refreshVolumeHistory()
+    await Promise.all([refreshVolumeHistory(), refreshViolationHistory()])
   }
 
   let aggregateTimer: ReturnType<typeof setInterval> | undefined
@@ -112,8 +135,11 @@
       await wakeLock.enable()
       cleanups.push(() => wakeLock.disable())
 
-      await refreshVolumeHistory()
-      await refreshMovementHistory()
+      await Promise.all([
+        refreshVolumeHistory(),
+        refreshViolationHistory(),
+        refreshMovementHistory(),
+      ])
       aggregateTimer = setInterval(() => void flushAggregatedSamples(), AGGREGATE_INTERVAL_MS)
       clockTimer = setInterval(() => (now = Date.now()), 1000)
       started = true
@@ -128,12 +154,15 @@
   // Keep the running monitors in sync when the user changes settings mid-session.
   $effect(() => {
     micMonitor.setCalibrationOffset(currentSettings.calibrationOffsetDb)
+    violationTracker.setThreshold(currentSettings.thresholdDb)
     motionMonitor.setSensitivity(currentSettings.movementSensitivity)
   })
 
   onDestroy(() => {
     if (aggregateTimer) clearInterval(aggregateTimer)
     if (clockTimer) clearInterval(clockTimer)
+    const finalViolation = violationTracker.flush(Date.now())
+    if (finalViolation) void saveViolationEvent(finalViolation)
     micMonitor.stop()
     motionMonitor.stop()
     wakeLock.disable()
@@ -141,6 +170,15 @@
 
   let volumeAlert = $derived(dbSpl > currentSettings.thresholdDb)
   let movementAlert = $derived(now < movementAlertUntil)
+  let violationCount = $derived(violationEvents.length)
+  let percentAboveThreshold = $derived.by(() => {
+    if (volumeHistory.length === 0) return 0
+
+    const violationDurationMs = violationEvents.reduce((sum, event) => sum + event.durationMs, 0)
+    const monitoredDurationMs = volumeHistory.length * BUCKET_MS
+    const percent = (violationDurationMs / monitoredDurationMs) * 100
+    return Math.round(Math.min(100, Math.max(0, percent)) * 10) / 10
+  })
 </script>
 
 {#if !started}
@@ -164,10 +202,21 @@
       </p>
     {/if}
 
-    <VolumeGraph data={liveSamples} thresholdDb={currentSettings.thresholdDb} />
+    <VolumeGraph
+      data={liveSamples}
+      thresholdDb={currentSettings.thresholdDb}
+      violationTimestamps={violationEvents.map((event) => event.timestamp)}
+    />
 
     <div class="panels">
-      <HistoryPanel {volumeHistory} {movementEvents} thresholdDb={currentSettings.thresholdDb} />
+      <HistoryPanel
+        {volumeHistory}
+        {violationEvents}
+        {violationCount}
+        {percentAboveThreshold}
+        {movementEvents}
+        thresholdDb={currentSettings.thresholdDb}
+      />
       <SettingsPanel />
     </div>
   </main>

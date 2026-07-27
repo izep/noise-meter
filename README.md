@@ -73,6 +73,20 @@ Movement is detected from sudden changes in accelerometer magnitude versus a slo
 baseline (to ignore normal ambient vibration). Sensitivity is configurable in Settings. This is
 expected to trigger rarely — only when the tablet is actually picked up, bumped, or relocated.
 
+## Threshold violations
+
+Noise threshold violations are tracked as discrete episodes: once the reading rises above the
+configured dB limit, the app starts one violation, records the highest dB reached during that
+episode, and counts it once when the reading drops back to or below the limit.
+
+The History view shows:
+
+- a total "limit exceeded X times" count,
+- the percentage of monitored time spent above the threshold (approximated as total violation
+  duration divided by the stored bucket coverage window),
+- a per-violation list with peak dB + duration, and
+- visual markers for each violation on the graph.
+
 ### Fire tablet / Silk troubleshooting
 
 On some Amazon Fire tablets, Silk can silently block motion sensors at the browser/site-permission

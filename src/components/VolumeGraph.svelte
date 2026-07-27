@@ -7,10 +7,11 @@
     /** Chronological samples: unix ms timestamp + dB reading. */
     data: { timestamp: number; db: number }[]
     thresholdDb: number
+    violationTimestamps?: number[]
     height?: number
   }
 
-  let { data, thresholdDb, height = 220 }: Props = $props()
+  let { data, thresholdDb, violationTimestamps = [], height = 220 }: Props = $props()
 
   let container: HTMLDivElement | undefined
   let plot: uPlot | undefined
@@ -42,8 +43,9 @@
       hooks: {
         draw: [
           (u) => {
-            const y = u.valToPos(thresholdDb, 'y', true)
             const ctx = u.ctx
+
+            const y = u.valToPos(thresholdDb, 'y', true)
             ctx.save()
             ctx.strokeStyle = '#f87171'
             ctx.setLineDash([6, 4])
@@ -51,6 +53,25 @@
             ctx.moveTo(u.bbox.left, y)
             ctx.lineTo(u.bbox.left + u.bbox.width, y)
             ctx.stroke()
+            ctx.restore()
+
+            const minX = u.scales.x.min
+            const maxX = u.scales.x.max
+            if (minX == null || maxX == null) return
+
+            ctx.save()
+            ctx.strokeStyle = '#ef4444'
+            ctx.lineWidth = 2
+            for (const timestamp of violationTimestamps) {
+              const xValue = timestamp / 1000
+              if (xValue < minX || xValue > maxX) continue
+
+              const x = u.valToPos(xValue, 'x', true)
+              ctx.beginPath()
+              ctx.moveTo(x, u.bbox.top + 2)
+              ctx.lineTo(x, u.bbox.top + 10)
+              ctx.stroke()
+            }
             ctx.restore()
           },
         ],
@@ -72,6 +93,12 @@
 
   $effect(() => {
     if (plot) plot.setData(toSeries(data))
+  })
+
+  $effect(() => {
+    void thresholdDb
+    void violationTimestamps
+    plot?.redraw()
   })
 
   onDestroy(() => {

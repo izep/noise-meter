@@ -1,14 +1,28 @@
 <script lang="ts">
   import VolumeGraph from './VolumeGraph.svelte'
-  import type { VolumeBucketRecord, MovementEventRecord } from '../lib/storage/db'
+  import type {
+    VolumeBucketRecord,
+    MovementEventRecord,
+    ViolationEventRecord,
+  } from '../lib/storage/db'
 
   interface Props {
     volumeHistory: VolumeBucketRecord[]
+    violationEvents: ViolationEventRecord[]
+    violationCount: number
+    percentAboveThreshold: number
     movementEvents: MovementEventRecord[]
     thresholdDb: number
   }
 
-  let { volumeHistory, movementEvents, thresholdDb }: Props = $props()
+  let {
+    volumeHistory,
+    violationEvents,
+    violationCount,
+    percentAboveThreshold,
+    movementEvents,
+    thresholdDb,
+  }: Props = $props()
 
   let graphData = $derived(
     volumeHistory.map((bucket) => ({ timestamp: bucket.timestamp, db: bucket.avgDb })),
@@ -22,9 +36,36 @@
 <section class="history">
   <h2>Volume History</h2>
   {#if volumeHistory.length > 0}
-    <VolumeGraph data={graphData} {thresholdDb} height={180} />
+    <VolumeGraph
+      data={graphData}
+      {thresholdDb}
+      height={180}
+      violationTimestamps={violationEvents.map((event) => event.timestamp)}
+    />
   {:else}
     <p class="empty">No history recorded yet.</p>
+  {/if}
+
+  <h2>Threshold Violations</h2>
+  <p class="summary">
+    Exceeded {thresholdDb} dB <strong>{violationCount}</strong> times ·
+    <strong>{percentAboveThreshold.toFixed(1)}%</strong> of monitored time
+  </p>
+  {#if violationEvents.length > 0}
+    <ul class="violation-list">
+      {#each violationEvents as event (event.id ?? event.timestamp)}
+        <li>
+          <span class="violation-meta">
+            <span class="indicator" aria-hidden="true"></span>
+            <span class="time">{formatTime(event.timestamp)}</span>
+          </span>
+          <span class="peak">{event.peakDb.toFixed(1)} dB peak</span>
+          <span class="duration">{event.durationMs}ms</span>
+        </li>
+      {/each}
+    </ul>
+  {:else}
+    <p class="empty">No threshold violations recorded. Great job!</p>
   {/if}
 
   <h2>Movement Events</h2>
@@ -61,6 +102,17 @@
     font-style: italic;
   }
 
+  .summary {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.9rem;
+  }
+
+  .summary strong {
+    color: #e2e8f0;
+  }
+
+  .violation-list,
   .movement-list {
     list-style: none;
     margin: 0;
@@ -69,6 +121,7 @@
     overflow-y: auto;
   }
 
+  .violation-list li,
   .movement-list li {
     display: flex;
     justify-content: space-between;
@@ -78,10 +131,25 @@
     font-size: 0.875rem;
   }
 
+  .violation-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .indicator {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: #f87171;
+    flex: 0 0 auto;
+  }
+
   .time {
     color: #e2e8f0;
   }
 
+  .peak,
   .magnitude,
   .duration {
     color: #94a3b8;
