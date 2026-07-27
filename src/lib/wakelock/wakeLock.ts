@@ -50,8 +50,34 @@ export function createWakeLockController(options: WakeLockOptions = {}): WakeLoc
 
   let sentinel: WakeLockSentinel | undefined
   let fallbackVideo: HTMLVideoElement | undefined
+  let fallbackPlaying = false
   let enabled = false
   let visibilityListener: (() => void) | undefined
+  let gestureRetryListener: (() => void) | undefined
+
+  function armGestureRetry(): void {
+    if (gestureRetryListener || !doc) return
+    gestureRetryListener = () => {
+      if (!enabled || fallbackPlaying || !fallbackVideo) return
+      fallbackVideo
+        .play()
+        .then(() => {
+          fallbackPlaying = true
+        })
+        .catch(() => {
+          // Still blocked; keep listening for a future gesture.
+        })
+    }
+    doc.addEventListener('click', gestureRetryListener)
+    doc.addEventListener('touchstart', gestureRetryListener)
+  }
+
+  function disarmGestureRetry(): void {
+    if (!gestureRetryListener || !doc) return
+    doc.removeEventListener('click', gestureRetryListener)
+    doc.removeEventListener('touchstart', gestureRetryListener)
+    gestureRetryListener = undefined
+  }
 
   async function acquire(): Promise<void> {
     if (isWakeLockSupported(wakeLockApi)) {
@@ -66,9 +92,12 @@ export function createWakeLockController(options: WakeLockOptions = {}): WakeLoc
     doc?.body?.appendChild(fallbackVideo)
     try {
       await fallbackVideo.play()
+      fallbackPlaying = true
     } catch {
-      // Autoplay may be blocked until a user gesture; the video will still
-      // attempt to play once one occurs elsewhere in the app.
+      // Autoplay may be blocked until a user gesture; arm a listener to
+      // retry on the next tap/click so the screen doesn't silently sleep.
+      fallbackPlaying = false
+      armGestureRetry()
     }
   }
 
@@ -91,6 +120,8 @@ export function createWakeLockController(options: WakeLockOptions = {}): WakeLoc
       fallbackVideo.pause()
       fallbackVideo.remove()
     }
+    fallbackPlaying = false
+    disarmGestureRetry()
     if (visibilityListener && doc) {
       doc.removeEventListener('visibilitychange', visibilityListener)
       visibilityListener = undefined
@@ -101,7 +132,7 @@ export function createWakeLockController(options: WakeLockOptions = {}): WakeLoc
     enable,
     disable,
     get usingFallback() {
-      return !sentinel && !!fallbackVideo
+      return !sentinel && !!fallbackVideo && fallbackPlaying
     },
   }
 }

@@ -97,6 +97,8 @@ export function createMotionMonitor(options: MotionMonitorOptions = {}): MotionM
   }
 
   async function start(): Promise<void> {
+    // Idempotent: remove any previously registered listener before re-starting.
+    stop()
     if (typeof DeviceMotionEvent === 'undefined' && !options.addEventListener) {
       set({ status: 'unsupported', moving: false })
       return

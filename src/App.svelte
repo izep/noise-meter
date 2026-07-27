@@ -92,14 +92,29 @@
   let clockTimer: ReturnType<typeof setInterval> | undefined
 
   async function handleStart(): Promise<void> {
-    await micMonitor.start()
-    await motionMonitor.start()
-    await wakeLock.enable()
-    await refreshVolumeHistory()
-    await refreshMovementHistory()
-    aggregateTimer = setInterval(() => void flushAggregatedSamples(), AGGREGATE_INTERVAL_MS)
-    clockTimer = setInterval(() => (now = Date.now()), 1000)
-    started = true
+    // Request mic and motion permissions concurrently (both synchronously
+    // invoked within this click handler) so neither loses the user-gesture
+    // window that gesture-gated APIs (e.g. iOS DeviceMotion) require.
+    const cleanups: Array<() => void> = []
+    try {
+      await Promise.all([
+        micMonitor.start().then(() => cleanups.push(() => micMonitor.stop())),
+        motionMonitor.start().then(() => cleanups.push(() => motionMonitor.stop())),
+      ])
+      await wakeLock.enable()
+      cleanups.push(() => wakeLock.disable())
+
+      await refreshVolumeHistory()
+      await refreshMovementHistory()
+      aggregateTimer = setInterval(() => void flushAggregatedSamples(), AGGREGATE_INTERVAL_MS)
+      clockTimer = setInterval(() => (now = Date.now()), 1000)
+      started = true
+    } catch (err) {
+      // Roll back anything that did succeed so a retry starts from a clean
+      // slate instead of leaking a running mic stream/motion listener.
+      cleanups.forEach((cleanup) => cleanup())
+      throw err
+    }
   }
 
   // Keep the running monitors in sync when the user changes settings mid-session.

@@ -26,6 +26,9 @@ function makeFakeDoc() {
       this.visibilityState = state
       listeners.get('visibilitychange')?.()
     },
+    trigger(type: string) {
+      listeners.get(type)?.()
+    },
   }
 }
 
@@ -78,6 +81,55 @@ describe('createWakeLockController', () => {
     expect(doc.body.appendChild).toHaveBeenCalledWith(fallbackVideo)
     expect(fallbackVideo.play).toHaveBeenCalled()
     expect(controller.usingFallback).toBe(true)
+  })
+
+  it('reports usingFallback as false while autoplay is blocked, and retries on the next gesture', async () => {
+    const doc = makeFakeDoc()
+    let allowPlay = false
+    const fallbackVideo = {
+      play: vi.fn(() => (allowPlay ? Promise.resolve() : Promise.reject(new Error('blocked')))),
+      pause: vi.fn(),
+      remove: vi.fn(),
+    }
+
+    const controller = createWakeLockController({
+      wakeLockApi: undefined,
+      doc: doc as unknown as Document,
+      createFallbackVideo: () => fallbackVideo as unknown as HTMLVideoElement,
+    })
+    await controller.enable()
+
+    // Autoplay was blocked: usingFallback must not falsely report success.
+    expect(controller.usingFallback).toBe(false)
+
+    allowPlay = true
+    doc.trigger('click')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(controller.usingFallback).toBe(true)
+  })
+
+  it('stops retrying the fallback video once disabled', async () => {
+    const doc = makeFakeDoc()
+    const fallbackVideo = {
+      play: vi.fn().mockRejectedValue(new Error('blocked')),
+      pause: vi.fn(),
+      remove: vi.fn(),
+    }
+
+    const controller = createWakeLockController({
+      wakeLockApi: undefined,
+      doc: doc as unknown as Document,
+      createFallbackVideo: () => fallbackVideo as unknown as HTMLVideoElement,
+    })
+    await controller.enable()
+    controller.disable()
+
+    fallbackVideo.play.mockClear()
+    doc.trigger('click')
+
+    expect(fallbackVideo.play).not.toHaveBeenCalled()
   })
 
   it('re-acquires the lock when the tab becomes visible again', async () => {

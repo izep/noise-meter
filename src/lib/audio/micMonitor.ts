@@ -59,6 +59,9 @@ export function createMicMonitor(options: MicMonitorOptions = {}): MicMonitor {
   let timer: ReturnType<typeof setInterval> | undefined
 
   async function start(): Promise<void> {
+    // Idempotent: if a previous session's resources are still around (e.g. a
+    // retry after a partial failure), tear them down before starting fresh.
+    stop()
     update((s) => ({ ...s, status: 'starting', error: undefined }))
     try {
       stream = await getUserMedia({ audio: true })
